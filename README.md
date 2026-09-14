@@ -82,3 +82,15 @@ JSON 包含管理员哈希与审计，权限必须保持 `0600`；目录 `0700`�
 上线仍需在 Ubuntu 22.04/24.04 验证：OpenVPN Connect 导入、真实连接、status 文件更新、指定目标分流、其他目标本地出口、证书撤销后重连失败、系统重启后的服务和 NAT 恢复。开发 fake 测试不代表这些验收已经完成。
 
 接口字段见 [docs/API.md](docs/API.md)，已验证项目和真实环境待验收项见 [docs/VALIDATION.md](docs/VALIDATION.md)。
+
+## 命令行更新
+
+新版安装脚本会提供 `ovpn-cli` 命令：
+
+```sh
+ovpn-cli version
+ovpn-cli update --check
+sudo ovpn-cli update
+```
+
+从本仓库 GitHub Release 下载当前架构的程序，验证 SHA256 后同步更新 WebUI 与 helper，启动失败自动回滚。配置、业务数据和 PKI 保留；只重启管理后台，不重启 OpenVPN。需要先发布正式 Release；旧安装须先用新版安装脚本部署一次。详见 [docs/UPDATE.md](docs/UPDATE.md)。

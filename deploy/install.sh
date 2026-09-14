@@ -5,6 +5,10 @@ if [[ $EUID -ne 0 ]]; then echo '请使用 sudo 运行安装脚本' >&2; exit 1;
 base=$(cd -- "$(dirname -- "$0")" && pwd)
 binary=${1:-"$base/../bin/vpn-admin-linux-amd64"}
 [[ -f "$binary" ]] || { echo '缺少 Go 可执行文件' >&2; exit 1; }
+# 不覆盖用户可能已安装的其他 ovpn-cli。
+if [[ -e /usr/local/bin/ovpn-cli || -L /usr/local/bin/ovpn-cli ]]; then
+  [[ -L /usr/local/bin/ovpn-cli && $(readlink /usr/local/bin/ovpn-cli) == /usr/local/bin/vpn-admin ]] || { echo '已有其他 ovpn-cli，请先确认命令归属' >&2; exit 1; }
+fi
 command -v sudo >/dev/null
 command -v visudo >/dev/null
 visudo -cf "$base/vpn-admin.sudoers"
@@ -15,6 +19,7 @@ install -d -m 0755 /etc/vpn-admin /usr/local/libexec
 systemctl stop vpn-admin.service 2>/dev/null || true
 install -m 0755 -o root -g root "$binary" /usr/local/bin/vpn-admin
 install -m 0755 -o root -g root "$binary" /usr/local/libexec/vpn-admin-helper
+ln -sfn /usr/local/bin/vpn-admin /usr/local/bin/ovpn-cli
 if [[ ! -e /etc/vpn-admin/config.json ]]; then install -m 0644 -o root -g root "$base/config.example.json" /etc/vpn-admin/config.json; fi
 install -m 0440 -o root -g root "$base/vpn-admin.sudoers" /etc/sudoers.d/vpn-admin
 install -m 0644 "$base/vpn-admin.tmpfiles" /etc/tmpfiles.d/vpn-admin.conf

@@ -1,0 +1,46 @@
+name: 发布安装包
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 校验正式版本号
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: '[[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]'
+      - name: 构建与测试
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          make linux VERSION="$RELEASE_VERSION"
+          make test
+      - name: 打包与计算校验和
+        run: |
+          mkdir -p release
+          cp bin/vpn-admin-linux-amd64 bin/vpn-admin-linux-arm64 release/
+          for arch in amd64 arm64; do
+            tar -czf "release/vpn-admin-linux-${arch}.tar.gz" "bin/vpn-admin-linux-${arch}" deploy README.md docs
+          done
+          cd release
+          sha256sum vpn-admin-* > checksums.txt
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_VERSION" release/* --verify-tag --title "$RELEASE_VERSION" --generate-notes

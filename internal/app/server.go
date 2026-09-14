@@ -22,6 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"ovpn-web-ui/internal/version"
 	"ovpn-web-ui/web"
 )
 
@@ -164,7 +165,9 @@ func (a *App) Router() *gin.Engine {
 		}
 		c.Next()
 	})
-	api.GET("/setup/status", func(c *gin.Context) { success(c, gin.H{"needs_setup": a.state.Admin == "", "fake": a.c.Fake}) })
+	api.GET("/setup/status", func(c *gin.Context) {
+		success(c, gin.H{"needs_setup": a.state.Admin == "", "fake": a.c.Fake, "version": version.Value})
+	})
 	api.POST("/setup/admin", a.setup)
 	api.POST("/auth/login", a.login)
 	api.POST("/auth/logout", func(c *gin.Context) {

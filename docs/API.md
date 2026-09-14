@@ -6,7 +6,7 @@
 
 | 方法 | 路径 | 请求或说明 |
 | --- | --- | --- |
-| GET | `/setup/status` | `needs_setup`、`fake` |
+| GET | `/setup/status` | `needs_setup`、`fake`、`version` |
 | POST | `/setup/admin` | `username`、`password`；一次性 |
 | POST | `/auth/login` | `username`、`password` |
 | POST | `/auth/logout` | 清除会话 |

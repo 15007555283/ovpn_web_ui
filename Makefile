@@ -1,11 +1,13 @@
 .PHONY: build test linux dev dev-config
+VERSION ?= dev
+LDFLAGS = -X ovpn-web-ui/internal/version.Value=$(VERSION)
 build:
 	cd web && npm ci --no-audit --no-fund && npm run build
 	mkdir -p bin
-	go build -trimpath -o bin/vpn-admin ./cmd/vpn-admin
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/vpn-admin ./cmd/vpn-admin
 linux: build
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/vpn-admin-linux-amd64 ./cmd/vpn-admin
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o bin/vpn-admin-linux-arm64 ./cmd/vpn-admin
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/vpn-admin-linux-amd64 ./cmd/vpn-admin
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/vpn-admin-linux-arm64 ./cmd/vpn-admin
 test:
 	go test -race ./...
 	go vet ./...
