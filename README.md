@@ -7,11 +7,10 @@ Go + Gin / Vue 3 + TypeScript + Naive UI 的单节点 OpenVPN 管理控制台。
 需要 Go 1.25+、Node 20+。代码位于独立仓库 `ovpn_web_ui`。
 
 ```sh
-make build
-# 数据目录必须为绝对路径；下面命令只生成本机开发配置，已被 Git 忽略。
-printf '{"listen":"127.0.0.1:8080","origin":"http://127.0.0.1:8080","data_dir":"%s/data","fake":true}\n' "$PWD" > config.json
-./bin/vpn-admin -config config.json
+make dev
 ```
+
+`make dev` 会构建程序，并在 `config.json` 缺失时自动生成本地 fake 配置，数据目录使用当前项目下 `data` 的绝对路径；已有配置不会被覆盖。配置和数据均被 Git 忽略。如已完成构建，可先执行 `make dev-config`，再运行 `./bin/vpn-admin -config config.json`。
 
 浏览器打开 `http://127.0.0.1:8080`，首次创建管理员（密码至少 12 字节），再登录。开发模式生成独立测试 CA/客户端证书，所有密钥留在忽略的 `data/fake` 中；生成的配置有 FAKE 标记，不能用于连接实际 VPN。fake 模式也不允许 Web 进程以 root 运行。
 
