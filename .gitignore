@@ -1,0 +1,8 @@
+/bin/
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/data/
+/config.json
+*.log
+.DS_Store

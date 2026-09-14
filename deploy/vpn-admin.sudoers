@@ -1,0 +1,2 @@
+# 仅允许 root 拥有的同一二进制进入 helper 模式，不允许附加参数或任意命令。
+vpn-admin ALL=(root) NOPASSWD: /usr/local/libexec/vpn-admin-helper helper
