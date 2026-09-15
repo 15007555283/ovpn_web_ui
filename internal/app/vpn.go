@@ -544,7 +544,7 @@ func (m *manager) health() map[string]any {
 				case "ActiveState":
 					h["service"] = p[1]
 				case "ActiveEnterTimestamp":
-					h["started_at"] = p[1]
+					h["started_at"] = formatServiceStartedAt(p[1])
 				case "Result":
 					h["last_result"] = p[1]
 				}
@@ -650,4 +650,20 @@ func setupFake(c *Config) error {
 		}
 	}
 	return atomicWrite(c.CA, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0644)
+}
+
+// 保留服务器当地时间，移除 systemctl 输出的星期和时区缩写。
+func formatServiceStartedAt(value string) string {
+	const layout = "2006-01-02 15:04:05"
+	fields := strings.Fields(value)
+	for i := 0; i+1 < len(fields); i++ {
+		candidate := fields[i] + " " + fields[i+1]
+		if parsed, err := time.Parse(layout, candidate); err == nil {
+			return parsed.Format(layout)
+		}
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.Format(layout)
+	}
+	return ""
 }

@@ -58,3 +58,10 @@
 ## 运行模式与生产统计
 
 `/setup/status`、`/auth/me`、`/dashboard` 返回 `mode`（`demo` 或 `production`），保留 `fake` 的接口兼容字段（dashboard 通过 mode 区分）。生产 `/dashboard` 的 `total_users`、`active_certificates`、`revoked_certificates` 来源为实际 PKI 索引，`routes` 来源为当前服务器路由文件；读取失败字段为 `null`。`health.certificate_error` 提供 PKI 不可用原因。在线统计继续通过 `online.available` 判断可用性。
+
+### 后台版本检查
+
+- `GET /api/v1/dashboard` 新增 `version`，为当前 WebUI/ovpn-cli 进程的编译版本；不与 OpenVPN 版本混用。
+- `health.started_at` 使用服务器本地时间 `YYYY-MM-DD HH:mm:ss`；无法解析时为空字符串，页面显示 `—`。
+- `GET /api/v1/system/version`：需要管理员登录，返回 `current`、`latest`、`update_available`、`release_url`。复用 GitHub 正式版查询，成功结果缓存 60 秒，请求超时 5 秒；失败返回 `502 VERSION_CHECK_FAILED`，不显示为“已是最新版本”。
+- 仪表盘提供 `sudo ovpn-cli update` 命令说明，页面检查不会自动安装程序或重启服务。

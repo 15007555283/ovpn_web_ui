@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { NAlert, NButton, NTag } from "naive-ui";
+import VersionStatus from "../components/VersionStatus.vue";
 import AuditTable from "../components/AuditTable.vue";
 import { api } from "../api/client";
 import { useAppContext } from "../composables/useAppContext";
@@ -63,6 +64,7 @@ defineExpose({ refresh });
         ><small>{{ fake ? "演示路由" : "当前路由文件中的规则" }}</small>
       </div>
     </div>
+    <VersionStatus :version="dashboard.version" />
     <NAlert
       v-if="health.error || health.certificate_error || health.routes_error"
       type="warning"

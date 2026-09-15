@@ -34,6 +34,9 @@ type attempt struct {
 	Requests int
 }
 type App struct {
+	versionStatus  *VersionStatus
+	versionChecked time.Time
+
 	mu       sync.Mutex
 	c        Config
 	state    State
@@ -184,6 +187,7 @@ func (a *App) Router() *gin.Engine {
 	api.POST("/routes/apply", a.apply)
 	api.GET("/sessions/online", a.online)
 	api.GET("/system/health", a.health)
+	api.GET("/system/version", a.checkVersion)
 	api.GET("/system/openvpn", a.health)
 	api.GET("/system/diagnostics", a.diagnostics)
 	api.POST("/system/openvpn/restart", a.restart)
@@ -819,7 +823,7 @@ func (a *App) dashboard(c *gin.Context) {
 		}
 		routeCount = v.Health["applied_routes"]
 	}
-	success(c, gin.H{"mode": a.c.Mode, "online": online, "health": v.Health, "total_users": totalCount, "active_certificates": activeCount, "revoked_certificates": revokedCount, "routes": routeCount, "recent": logs, "settings": a.state.Settings})
+	success(c, gin.H{"version": version.Value, "mode": a.c.Mode, "online": online, "health": v.Health, "total_users": totalCount, "active_certificates": activeCount, "revoked_certificates": revokedCount, "routes": routeCount, "recent": logs, "settings": a.state.Settings})
 }
 func (a *App) auditList(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

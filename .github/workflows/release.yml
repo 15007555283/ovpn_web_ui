@@ -35,7 +35,7 @@ jobs:
           mkdir -p release
           cp bin/vpn-admin-linux-amd64 bin/vpn-admin-linux-arm64 release/
           for arch in amd64 arm64; do
-            tar -czf "release/vpn-admin-linux-${arch}.tar.gz" "bin/vpn-admin-linux-${arch}" deploy README.md docs
+            tar -czf "release/vpn-admin-linux-${arch}.tar.gz" "bin/vpn-admin-linux-${arch}" deploy scripts README.md docs
           done
           cd release
           sha256sum vpn-admin-* > checksums.txt

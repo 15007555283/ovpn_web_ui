@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"ovpn-web-ui/internal/version"
 )
 
 func TestProductionDashboardUsesVPNFiles(t *testing.T) {
@@ -35,7 +36,7 @@ func TestProductionDashboardUsesVPNFiles(t *testing.T) {
 	m := newManager(c)
 	m.command = func(name string, args ...string) ([]byte, error) {
 		if name == c.Systemctl {
-			return []byte("ActiveState=active\nActiveEnterTimestamp=真实启动时间\n"), nil
+			return []byte("ActiveState=active\nActiveEnterTimestamp=Sat 2029-09-15 10:09:22 CST\n"), nil
 		}
 		return nil, errors.New("测试环境中未安装")
 	}
@@ -55,6 +56,9 @@ func TestProductionDashboardUsesVPNFiles(t *testing.T) {
 		return body["data"].(map[string]any)
 	}
 	data := get()
+	if data["version"] != version.Value || data["health"].(map[string]any)["started_at"] != "2029-09-15 10:09:22" {
+		t.Fatal(data)
+	}
 	if data["total_users"] != float64(2) || data["active_certificates"] != float64(1) || data["revoked_certificates"] != float64(1) || data["routes"] != float64(1) {
 		t.Fatal(data)
 	}

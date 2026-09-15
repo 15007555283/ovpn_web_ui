@@ -87,6 +87,7 @@ export interface Health extends Record<string, unknown> {
   routes_error?: string;
 }
 export interface Dashboard {
+  version: string;
   online: OnlineStatus;
   health: Health;
   total_users: number | null;
@@ -95,4 +96,11 @@ export interface Dashboard {
   routes: number | null;
   recent: AuditLog[];
   settings: Settings;
+}
+
+export interface VersionStatus {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  release_url: string;
 }
