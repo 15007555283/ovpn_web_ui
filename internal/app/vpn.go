@@ -23,8 +23,6 @@ import (
 	"time"
 )
 
-const serviceName = "openvpn-server@server"
-
 type VPNRequest struct {
 	Action   string   `json:"action"`
 	Name     string   `json:"name"`
@@ -44,14 +42,28 @@ type manager struct {
 	command func(string, ...string) ([]byte, error)
 }
 
-func newManager(c Config) *manager { return &manager{c: c, command: runCommand} }
+func newManager(c Config) *manager {
+	c.complete()
+	return &manager{c: c, command: func(name string, args ...string) ([]byte, error) {
+		// 按实际调用检查工具，某个诊断工具缺失不阻止其他管理操作。
+		// alternatives 链接解析后仅执行 root 拥有且不可被普通用户改写的目标。
+		resolved, e := filepath.EvalSymlinks(name)
+		if e != nil {
+			return nil, e
+		}
+		if e = trustedPath(resolved, false); e != nil {
+			return nil, e
+		}
+		return runCommand(resolved, args...)
+	}}
+}
 
-// 系统命令固定、无 shell，清空来自 sudo 调用者的环境。
+// 命令仅来自 root 管理的配置，不经过 shell，清空 sudo 调用者的环境。
 func runCommand(name string, args ...string) ([]byte, error) {
 	ctx := context.Background()
 	var cancel context.CancelFunc
 	// EasyRSA 写操作由 helper 持锁执行到结束，不随 HTTP 请求取消。
-	if name == "/usr/bin/systemctl" || name == "/usr/sbin/openvpn" || name == "/usr/sbin/iptables" {
+	if filepath.Base(name) != "easyrsa" {
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 	}
@@ -99,15 +111,15 @@ func HelperMain() error {
 		return errors.New("helper 需要 root")
 	}
 	syscall.Umask(0077)
-	const path = "/etc/vpn-admin/config.json"
-	if e := trustedPath(path, false); e != nil {
+	path, e := trustedConfig("/etc/vpn-admin/config.json")
+	if e != nil {
 		return e
 	}
 	c, e := ReadConfig(path)
 	if e != nil || c.Fake {
 		return errors.New("helper 配置无效")
 	}
-	for _, p := range []string{c.EasyRSA, filepath.Join(c.EasyRSA, "easyrsa"), c.ServerConfig, c.CA, c.TLSKey} {
+	for _, p := range []string{c.EasyRSA, filepath.Join(c.EasyRSA, "easyrsa"), c.ServerConfig, c.CA, c.TLSKey, c.PKIDir} {
 		if e := trustedPath(p, false); e != nil {
 			return e
 		}
@@ -195,7 +207,7 @@ func (m *manager) perform(r VPNRequest) (VPNResult, error) {
 			if _, e := os.Stat(m.certPath(r.Name)); e == nil {
 				return v, errors.New("USER_EXISTS: PKI 中已存在同名证书")
 			}
-			if _, e := m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+filepath.Join(m.c.EasyRSA, "pki"), "build-client-full", r.Name, "nopass"); e != nil {
+			if _, e := m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+m.c.PKIDir, "build-client-full", r.Name, "nopass"); e != nil {
 				return v, errors.New("PKI_OPERATION_FAILED: 创建证书失败")
 			}
 		}
@@ -204,7 +216,7 @@ func (m *manager) perform(r VPNRequest) (VPNResult, error) {
 		return m.profile(r.Name, r.Settings)
 	case "user-revoke":
 		if m.c.Fake {
-			if e := atomicWrite(filepath.Join(m.c.EasyRSA, "pki", r.Name+".revoked"), []byte("revoked"), 0600); e != nil {
+			if e := atomicWrite(filepath.Join(m.c.PKIDir, r.Name+".revoked"), []byte("revoked"), 0600); e != nil {
 				return v, e
 			}
 			return v, nil
@@ -221,14 +233,14 @@ func (m *manager) perform(r VPNRequest) (VPNResult, error) {
 			return v, e
 		}
 		if !revoked {
-			if _, e = m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+filepath.Join(m.c.EasyRSA, "pki"), "revoke", r.Name); e != nil {
+			if _, e = m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+m.c.PKIDir, "revoke", r.Name); e != nil {
 				return v, errors.New("PKI_OPERATION_FAILED: 撤销证书失败")
 			}
 		}
-		if _, e = m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+filepath.Join(m.c.EasyRSA, "pki"), "gen-crl"); e != nil {
+		if _, e = m.command(filepath.Join(m.c.EasyRSA, "easyrsa"), "--batch", "--pki-dir="+m.c.PKIDir, "gen-crl"); e != nil {
 			return v, errors.New("PKI_OPERATION_FAILED: CRL 生成失败，请重试撤销")
 		}
-		crl, e := os.ReadFile(filepath.Join(m.c.EasyRSA, "pki/crl.pem"))
+		crl, e := os.ReadFile(filepath.Join(m.c.PKIDir, "crl.pem"))
 		if e != nil {
 			return v, e
 		}
@@ -289,7 +301,7 @@ func (m *manager) perform(r VPNRequest) (VPNResult, error) {
 	return v, nil
 }
 func (m *manager) certPath(n string) string {
-	return filepath.Join(m.c.EasyRSA, "pki/issued", n+".crt")
+	return filepath.Join(m.c.PKIDir, "issued", n+".crt")
 }
 func readCert(path string) (*x509.Certificate, error) {
 	b, e := os.ReadFile(path)
@@ -318,10 +330,10 @@ func (m *manager) certificate(n string) (*x509.Certificate, error) {
 	return c, nil
 }
 func (m *manager) indexRevoked(serial string) (bool, error) {
-	if e := trustedPath(filepath.Join(m.c.EasyRSA, "pki/index.txt"), false); e != nil {
+	if e := trustedPath(filepath.Join(m.c.PKIDir, "index.txt"), false); e != nil {
 		return false, e
 	}
-	b, e := os.ReadFile(filepath.Join(m.c.EasyRSA, "pki/index.txt"))
+	b, e := os.ReadFile(filepath.Join(m.c.PKIDir, "index.txt"))
 	if e != nil {
 		return false, errors.New("PKI 索引不可读")
 	}
@@ -343,7 +355,7 @@ func (m *manager) profile(n string, s Settings) (VPNResult, error) {
 		return v, e
 	}
 	if m.c.Fake {
-		if _, e = os.Stat(filepath.Join(m.c.EasyRSA, "pki", n+".revoked")); e == nil {
+		if _, e = os.Stat(filepath.Join(m.c.PKIDir, n+".revoked")); e == nil {
 			return v, errors.New("USER_REVOKED: 证书已撤销")
 		}
 	} else {
@@ -367,7 +379,7 @@ func (m *manager) profile(n string, s Settings) (VPNResult, error) {
 	if _, e = c.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); e != nil {
 		return v, errors.New("客户端证书验证失败")
 	}
-	keyPath := filepath.Join(m.c.EasyRSA, "pki/private", n+".key")
+	keyPath := filepath.Join(m.c.PKIDir, "private", n+".key")
 	if !m.c.Fake {
 		if e := trustedPath(keyPath, false); e != nil {
 			return v, e
@@ -409,13 +421,22 @@ func (m *manager) profile(n string, s Settings) (VPNResult, error) {
 	v.Expires = c.NotAfter
 	return v, nil
 }
+func serviceActive(b []byte) bool {
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		if line == "ActiveState=active" || line == "active" {
+			return true
+		}
+	}
+	return false
+}
 func (m *manager) restart() error {
-	if _, e := m.command("/usr/bin/systemctl", "restart", serviceName); e != nil {
+	m.c.complete()
+	if _, e := m.command(m.c.RestartCommand[0], m.c.RestartCommand[1:]...); e != nil {
 		return errors.New("OPENVPN_UNAVAILABLE: 重启失败")
 	}
 	for i := 0; i < 5; i++ {
-		b, e := m.command("/usr/bin/systemctl", "is-active", serviceName)
-		if e == nil && strings.TrimSpace(string(b)) == "active" {
+		b, e := m.command(m.c.StatusCommand[0], m.c.StatusCommand[1:]...)
+		if e == nil && serviceActive(b) {
 			return nil
 		}
 		time.Sleep(time.Second)
@@ -493,7 +514,7 @@ func (m *manager) applyRoutes(content []byte) error {
 	return os.Remove(backup)
 }
 func (m *manager) health() map[string]any {
-	h := map[string]any{"fake": m.c.Fake, "service": "unknown", "service_name": serviceName, "vpn_network": m.c.VPNNetwork, "preflight": "正常"}
+	h := map[string]any{"fake": m.c.Fake, "service": "unknown", "mode": m.c.Mode, "service_name": m.c.ServiceName, "vpn_network": m.c.VPNNetwork, "preflight": "正常"}
 	if e := m.preflight(); e != nil {
 		h["preflight"] = e.Error()
 	}
@@ -512,7 +533,10 @@ func (m *manager) health() map[string]any {
 		h["forward"] = false
 		return h
 	}
-	if b, e := m.command("/usr/bin/systemctl", "show", serviceName, "--property=ActiveState,ActiveEnterTimestamp,Result", "--no-pager"); e == nil {
+	if b, e := m.command(m.c.StatusCommand[0], m.c.StatusCommand[1:]...); e == nil {
+		if strings.TrimSpace(string(b)) == "active" {
+			h["service"] = "active"
+		}
 		for _, l := range strings.Split(string(b), "\n") {
 			p := strings.SplitN(l, "=", 2)
 			if len(p) == 2 {
@@ -527,14 +551,31 @@ func (m *manager) health() map[string]any {
 			}
 		}
 	}
-	if b, e := m.command("/usr/sbin/openvpn", "--version"); e == nil {
+	if b, e := m.command(m.c.OpenVPN, "--version"); e == nil {
 		h["version"] = strings.SplitN(string(b), "\n", 2)[0]
 	}
-	b, _ := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
+	stats, statsErr := m.certificateStats()
+	if statsErr != nil {
+		h["certificate_error"] = statsErr.Error()
+	} else {
+		h["certificates"] = stats
+	}
+	if b, e := os.ReadFile(m.c.RoutesFile); e == nil {
+		count := 0
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), `push "route `) {
+				count++
+			}
+		}
+		h["applied_routes"] = count
+	} else {
+		h["routes_error"] = "服务器路由文件不可读，统计暂不可用"
+	}
+	b, _ := os.ReadFile(m.c.IPForward)
 	h["ipv4_forward"] = strings.TrimSpace(string(b)) == "1"
-	b, e := m.command("/usr/sbin/iptables", "-t", "nat", "-S", "POSTROUTING")
+	b, e := m.command(m.c.IPTables, "-t", "nat", "-S", "POSTROUTING")
 	h["nat"] = e == nil && strings.Contains(string(b), "-s "+m.c.VPNNetwork) && strings.Contains(string(b), "-j MASQUERADE")
-	b, e = m.command("/usr/sbin/iptables", "-S", "FORWARD")
+	b, e = m.command(m.c.IPTables, "-S", "FORWARD")
 	h["forward"] = e == nil && (strings.Contains(string(b), "-P FORWARD ACCEPT") || strings.Contains(string(b), "-j ACCEPT"))
 	h["firewall_note"] = "仅检查规则存在性，实际连通性需客户端验证"
 	return h
@@ -570,7 +611,7 @@ func (m *manager) fakeCreate(n string) error {
 		return e
 	}
 	key, _ := x509.MarshalECPrivateKey(k)
-	if e = atomicWrite(filepath.Join(m.c.EasyRSA, "pki/private", n+".key"), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: key}), 0600); e != nil {
+	if e = atomicWrite(filepath.Join(m.c.PKIDir, "private", n+".key"), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: key}), 0600); e != nil {
 		return e
 	}
 	return atomicWrite(m.certPath(n), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0644)
@@ -578,6 +619,7 @@ func (m *manager) fakeCreate(n string) error {
 func setupFake(c *Config) error {
 	base := filepath.Join(c.DataDir, "fake")
 	c.EasyRSA = base
+	c.PKIDir = filepath.Join(base, "pki")
 	c.CA = filepath.Join(base, "ca.crt")
 	c.TLSKey = filepath.Join(base, "tls-crypt.key")
 	c.RoutesFile = filepath.Join(base, "routes.conf")

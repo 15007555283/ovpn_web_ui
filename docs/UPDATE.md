@@ -1,6 +1,6 @@
 # ovpn-cli 更新
 
-`ovpn-cli` 是同一个 Go 可执行文件的命令入口，不额外安装语言运行时。安装脚本会创建 `/usr/local/bin/ovpn-cli` → `/usr/local/bin/vpn-admin` 的链接；如果已有其他同名工具，安装会停止，避免覆盖它。
+`ovpn-cli` 是同一个 Go 可执行文件的命令入口，不额外安装语言运行时。安装脚本会创建 `/usr/local/bin/ovpn-cli` → `/data/ovpn/ovpn-cli` 的链接；如果已有其他同名工具，安装会停止，避免覆盖它。
 
 ## 使用
 
@@ -64,3 +64,23 @@ git push origin v0.1.0
 ## 兼容性范围
 
 CLI 更新当前安装的二进制，不自动覆盖 systemd、sudoers、Nginx 或用户配置。将来若版本要求更改部署权限、目录或进行不兼容数据迁移，应在发版说明中要求先按新的安装/迁移流程操作，不能仅靠替换二进制完成。回滚恢复程序，不回退管理员在运行期间产生的业务数据。
+
+## JSONC 存储版本升级
+
+首次运行模块存储版本会将旧 `state.json` 或 `store/` 数据迁移至 `db/` 固定模块文件，旧文件保留在 `db/legacy/`，并使用迁移标记阻止旧版程序误建空库。升级前请备份整个数据目录与 PKI/CRL/路由。自动更新的二进制回滚不负责回滚数据格式；如果首次启动已经迁移，回退旧版本还需管理员恢复迁移前整套备份，不能仅替换程序。详见 [CONFIG.md](CONFIG.md)。
+
+## 服务与配置
+
+```sh
+sudo ovpn-cli start
+ovpn-cli status
+sudo ovpn-cli restart
+sudo ovpn-cli stop
+# 前台运行前先停止 systemd 服务，避免端口和数据锁冲突
+sudo -u vpn-admin ovpn-cli --config /data/ovpn/config.json
+sudo ovpn-cli update --config /data/ovpn/config.json
+```
+
+主程序在 `/data/ovpn/ovpn-cli`，模块数据在 `/data/ovpn/data/db`。默认配置优先读取真实二进制旁的 `config.json`，其次为 `/etc/vpn-admin/config.json`，最后为当前目录的 `config.json`。特权 helper 固定读取 `/etc/vpn-admin/config.json` 链接的目标；使用其他生产配置时，必须同步该链接。Web 进程使用 `vpn-admin` 用户，Nginx 监听 443 并代理到本机 8080。
+
+`update` 仅更新已发布到 GitHub Release 的程序和 helper，不替换配置与数据。仓库没有正式 Release 时，`update --check` 会报告未找到版本。启动后台请使用 `start`，更新并不等于启动。

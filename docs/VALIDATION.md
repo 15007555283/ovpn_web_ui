@@ -29,3 +29,29 @@
 已补充并通过更新专项测试：Release/资产地址校验、SHA256 损坏及重复条目拒绝、预发行版本拒绝、HTTPS 跳转限制、跨域移除 GH_TOKEN、自动更新不降级、主程序/helper 同步替换、保持原停止状态、PKI 占锁时不替换、启动失败回滚、中断事务恢复，以及回滚失败时保留备份。
 
 版本号注入已验证，带 `v0.1.0` 构建标记的本地临时二进制可正确输出版本；这不代表已发布 v0.1.0。Release workflow 已做 YAML 语法检查，安装脚本通过 bash 语法检查。没有执行 GitHub Actions 发版，也没有操作真实 Ubuntu 服务做在线升级。
+
+## JSONC 分片与运行配置
+
+新增自动化覆盖：旧 JSON 迁移及备份、管理员和业务数据重启恢复、审计 1000 条分片、未变化分片复用、写入失败保留已提交状态、分片损坏拒绝启动、演示/生产数据隔离、JSONC 中文注释与字符串中的 URL、配置冲突及命令参数数组。生产仪表盘测试使用临时 PKI 索引和 status 文件，并注入服务命令结果，验证统计来源和数据缺失时返回 null；这不是实际服务器验证。
+
+## 前端组件拆分回归
+
+在独立临时 demo 环境通过实际浏览器验证登录和会话恢复、各管理页切换、创建用户后列表更新、批量路由逐行反馈及 CIDR 规范化、设置保存后公共名称同步、状态文件更新后在线列表自动刷新、系统状态和审计表格展示。界面样式文件逐字节保持一致。用户撤销、真实 OpenVPN 重启和管理员改密未在此次浏览器回归中执行。
+
+## db 与 fake 目录隔离
+
+模块文件固定为 `db/admin.jsonc`、`settings.jsonc`、`users.jsonc`、`routes.jsonc`、`revisions.jsonc`，审计按 1000 条分片。覆盖旧 `state.json` 和摘要式 `store` 的迁移、旧数据归档、演示 PKI 路径保持不变、准备阶段失败保留原数据，以及提交中断后完成事务。当前本地演示数据已在持有进程锁的情况下完成迁移；未操作真实 OpenVPN。
+
+## 2026-09-15 服务器部署
+
+- 目标 `47.106.181.3`，Ubuntu 24.04 x86_64；程序 `/data/ovpn/ovpn-cli`，配置 `/data/ovpn/config.json`，模块 JSONC `/data/ovpn/data/db`。
+- `vpn-admin.service` 使用专用用户，监听 `127.0.0.1:8080`，已启用开机启动。Nginx 监听 443，域名 `ovpn.snyder.cc`；Let's Encrypt 证书及自动续期加载已配置。
+- 公网可信 HTTPS 未提供临时口令返回 401；提供口令后页面和 setup/status 返回 200，生产模式 `fake=false`；未登录 dashboard 返回 401。管理员尚未初始化。
+- 首次访问保护口令仅保存在服务器 `/data/ovpn/initial-access.txt`（root 0600）。初始化管理员后可删除站点配置中的两行 `auth_basic` 配置，经 `nginx -t` 后 reload。
+- 真实 helper 检查：OpenVPN 2.6.19、服务 active、主配置/CRL/routes 预检查正常；现有客户端证书计数 0。OpenVPN 启动时间仍为 2026-09-14 16:58:29 CST，没有因本次部署重启。
+- NAT/FORWARD 规则检查返回 false；没有修改现有防火墙，真实客户端连通性仍待验证。
+- 当前部署为未发版构建 `dev`；主程序及 helper SHA256 一致。GitHub 尚无 Release，服务器 `ovpn-cli update --check` 如实报告未找到版本。
+- 本次 Go 全量测试、go vet、Linux amd64 编译、安装脚本语法检查通过。
+- 安装 Nginx/Certbot 时系统 needrestart 尝试重启已有 aegis.service 并报告 signal 失败，复查为 failed；此为服务器已有安全代理，未进一步修改其配置。
+
+- 后续已确认管理员初始化完成（`needs_setup=false`），移除了临时 Nginx 口令和文件；公网页面返回 200，未登录后台接口返回 401。

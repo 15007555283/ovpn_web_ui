@@ -1,0 +1,45 @@
+// 配置支持 // 单行注释及 /* 块注释 */，不支持尾随逗号。
+{
+  // 管理后台监听地址，必须使用回环地址；通过反向代理对外访问
+  "listen": "127.0.0.1:8080",
+  // 浏览器访问来源：生产必须为 HTTPS，不带路径和结尾斜杠
+  "origin": "https://vpn-admin.example.com",
+  // 后台数据目录：绝对路径，权限 0700，演示与生产必须分开
+  "data_dir": "/data/ovpn/data",
+  // OpenVPN 主配置：检查路由 include、CRL 与分流约束
+  "server_config": "/etc/openvpn/server/server.conf",
+  // OpenVPN 分流规则文件：应用路由时备份、写入及失败恢复
+  "routes_file": "/etc/openvpn/server/routes.conf",
+  // OpenVPN 在线状态文件，需 status-version 3，建议每 10 秒更新
+  "status_file": "/var/log/openvpn/status.log",
+  // EasyRSA 所在目录，执行其中的 easyrsa 程序
+  "easyrsa_dir": "/etc/openvpn/easy-rsa",
+  // CA 证书路径，不是 CA 私钥
+  "ca_file": "/etc/openvpn/server/ca.crt",
+  // tls-crypt 密钥路径，用于生成客户端配置
+  "tls_key_file": "/etc/openvpn/server/tls-crypt.key",
+  // OpenVPN 实际读取的 CRL 文件路径
+  "crl_file": "/etc/openvpn/server/crl.pem",
+  // VPN IPv4 网段，用于路由冲突与 NAT 检查，不改写服务端配置
+  "vpn_network": "10.8.0.0/24",
+  // demo 为演示；production 为生产。不要同时填写旧 fake 字段
+  "mode": "production",
+  // EasyRSA PKI 目录，含 issued、private、index.txt 和 crl.pem
+  "pki_dir": "/etc/openvpn/easy-rsa/pki",
+  // 服务器证书 CN，生产客户端证书统计中排除此名称
+  "server_cn": "server",
+  // OpenVPN systemd 服务名，省略命令数组时使用
+  "service_name": "openvpn-server@server",
+  // systemctl 可执行文件，生成默认重启和状态命令
+  "systemctl_path": "/usr/bin/systemctl",
+  // OpenVPN 可执行文件，通过 --version 获取实际版本
+  "openvpn_path": "/usr/sbin/openvpn",
+  // iptables 可执行文件，只读检查 NAT 和 FORWARD
+  "iptables_path": "/usr/sbin/iptables",
+  // 系统 IPv4 转发开关文件，只读
+  "ip_forward_file": "/proc/sys/net/ipv4/ip_forward",
+  // 重启命令：程序绝对路径和参数数组，不经过 shell；改服务名时同步修改
+  "restart_command": ["/usr/bin/systemctl", "restart", "openvpn-server@server"],
+  // 状态命令：输出 ActiveState=active；可附启动时间和结果，详见 docs/CONFIG.md
+  "status_command": ["/usr/bin/systemctl", "show", "openvpn-server@server", "--property=ActiveState,ActiveEnterTimestamp,Result", "--no-pager"]
+}

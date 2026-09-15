@@ -10,7 +10,7 @@ Go + Gin / Vue 3 + TypeScript + Naive UI 的单节点 OpenVPN 管理控制台。
 make dev
 ```
 
-`make dev` 会构建程序，并在 `config.json` 缺失时自动生成本地 fake 配置，数据目录使用当前项目下 `data` 的绝对路径；已有配置不会被覆盖。配置和数据均被 Git 忽略。如已完成构建，可先执行 `make dev-config`，再运行 `./bin/vpn-admin -config config.json`。
+`make dev` 会构建程序，并在 `config.json` 缺失时自动生成本地演示配置（`mode: "demo"`），数据目录使用当前项目下 `data` 的绝对路径；已有配置不会被覆盖。配置和数据均被 Git 忽略。如已完成构建，可先执行 `make dev-config`，再运行 `./bin/vpn-admin -config config.json`。
 
 浏览器打开 `http://127.0.0.1:8080`，首次创建管理员（密码至少 12 字节），再登录。开发模式生成独立测试 CA/客户端证书，所有密钥留在忽略的 `data/fake` 中；生成的配置有 FAKE 标记，不能用于连接实际 VPN。fake 模式也不允许 Web 进程以 root 运行。
 
@@ -24,7 +24,7 @@ fake 默认不伪造在线用户。可将 status-version 3 测试文件写到 `d
 - 用户创建、备注编辑、详情、证书实时验证、内存生成并下载 `.ovpn`、重新生成、撤销重试。
 - IP/CIDR 规范化、保留网段及默认路由拦截、覆盖检测、逐行批量反馈、编辑/启停/删除、版本应用与失败回滚。
 - status-version 3 在线列表、统计、最后连接时间、健康检查、受控服务重启、脱敏诊断及分页审计。
-- JSON 采用同目录临时文件、fsync、原子重命名；Web 进程锁和 helper 跨进程锁阻止并发写入。
+- JSONC 按功能保存到 `data/db/` 的固定模块文件，演示文件保留在 `data/fake/`；审计每 1000 条分片，事务支持中断恢复；Web 进程锁和 helper 跨进程锁阻止并发写入。
 
 首次使用不会自动导入服务器已有路由，初始状态标记为“尚未应用”。首次应用会以界面中启用的规则全量替换服务器分流规则，请先补录需要保留的目标。
 
@@ -40,7 +40,7 @@ make linux
 sudo bash deploy/install.sh /path/to/vpn-admin-linux-amd64
 ```
 
-安装脚本安装同一二进制为 Web 和 root helper 两个路径，Web 使用专用 `vpn-admin` 用户，helper 经 sudoers 精确白名单调用。配置保存在 root 拥有且不可由普通用户修改的 `/etc/vpn-admin/config.json`。配置及所有固定路径祖先不能是符号链接或对组/其他用户可写；CA 私钥保持 root-only。
+安装脚本安装同一二进制为 Web 和 root helper 两个路径，Web 使用专用 `vpn-admin` 用户，helper 经 sudoers 精确白名单调用。配置保存在 root 拥有且不可由普通用户修改的 `/data/ovpn/config.json`；`/etc/vpn-admin/config.json` 为 helper 使用的兼容链接。解析后的配置路径及所有祖先不能对组/其他用户可写；CA 私钥保持 root-only。
 
 按服务器实际路径修改配置，并完成：
 
@@ -71,7 +71,7 @@ sudo bash deploy/install.sh /path/to/vpn-admin-linux-amd64
 
 ## 备份、恢复与升级
 
-JSON 包含管理员哈希与审计，权限必须保持 `0600`；目录 `0700`。需要单独备份 OpenVPN/EasyRSA 的完整 PKI（含 CA 私钥），用 root-only、加密的离线存储，不要放入 Git。为保持一致性，备份时停止 WebUI，并确保没有 helper 运行后，再一起备份 `/var/lib/vpn-admin/state.json`、`/etc/vpn-admin/config.json` 和 `/etc/openvpn`。在线状态、会话无需备份。
+JSON 包含管理员哈希与审计，权限必须保持 `0600`；目录 `0700`。需要单独备份 OpenVPN/EasyRSA 的完整 PKI（含 CA 私钥），用 root-only、加密的离线存储，不要放入 Git。为保持一致性，备份时停止 WebUI，并确保没有 helper 运行后，再一起备份整个 `/data/ovpn/data` 数据目录、`/etc/vpn-admin/config.json` 和 `/etc/openvpn`。在线状态、会话无需备份。
 
 恢复时先停止 WebUI，恢复同一备份点的 JSON 与 PKI/CRL/路由，恢复原属主权限，再启动。不能只恢复旧 JSON 来“恢复”撤销的证书。升级前备份，重新执行安装脚本；它保留现有配置和数据，安装后由管理员手动启动。JSON 文件损坏时启动失败，不会以空数据覆盖；多进程实例共享数据目录会被锁拒绝。
 
@@ -94,3 +94,11 @@ sudo ovpn-cli update
 ```
 
 从本仓库 GitHub Release 下载当前架构的程序，验证 SHA256 后同步更新 WebUI 与 helper，启动失败自动回滚。配置、业务数据和 PKI 保留；只重启管理后台，不重启 OpenVPN。需要先发布正式 Release；旧安装须先用新版安装脚本部署一次。详见 [docs/UPDATE.md](docs/UPDATE.md)。
+
+## 配置与存储
+
+`config.json` 使用 `mode: "demo"` 或 `mode: "production"` 区分运行环境，可配置 OpenVPN 文件路径、PKI、服务名与重启/状态命令。生产仪表盘读取实际状态文件、PKI 索引与服务命令结果。旧数据自动迁移为 JSONC 分片；降级需要恢复迁移前的整套备份。完整字段、存储结构及迁移说明见 [docs/CONFIG.md](docs/CONFIG.md)。
+
+## 前端维护
+
+前端按页面组织在 `web/src/views`，布局、共用组件、请求和类型分别独立维护。入口 `App.vue` 只负责应用启动、主题和登录切换。目录职责与页面刷新约定见 [web/README.md](web/README.md)。

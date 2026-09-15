@@ -19,22 +19,32 @@ import (
 )
 
 type Config struct {
-	Listen       string `json:"listen"`
-	Origin       string `json:"origin"`
-	DataDir      string `json:"data_dir"`
-	Fake         bool   `json:"fake"`
-	ServerConfig string `json:"server_config"`
-	RoutesFile   string `json:"routes_file"`
-	StatusFile   string `json:"status_file"`
-	EasyRSA      string `json:"easyrsa_dir"`
-	CA           string `json:"ca_file"`
-	TLSKey       string `json:"tls_key_file"`
-	CRL          string `json:"crl_file"`
-	VPNNetwork   string `json:"vpn_network"`
+	ServerCN       string   `json:"server_cn"`
+	Mode           string   `json:"mode"`
+	PKIDir         string   `json:"pki_dir"`
+	RestartCommand []string `json:"restart_command"`
+	StatusCommand  []string `json:"status_command"`
+	ServiceName    string   `json:"service_name"`
+	Systemctl      string   `json:"systemctl_path"`
+	OpenVPN        string   `json:"openvpn_path"`
+	IPTables       string   `json:"iptables_path"`
+	IPForward      string   `json:"ip_forward_file"`
+	Listen         string   `json:"listen"`
+	Origin         string   `json:"origin"`
+	DataDir        string   `json:"data_dir"`
+	Fake           bool     `json:"fake"`
+	ServerConfig   string   `json:"server_config"`
+	RoutesFile     string   `json:"routes_file"`
+	StatusFile     string   `json:"status_file"`
+	EasyRSA        string   `json:"easyrsa_dir"`
+	CA             string   `json:"ca_file"`
+	TLSKey         string   `json:"tls_key_file"`
+	CRL            string   `json:"crl_file"`
+	VPNNetwork     string   `json:"vpn_network"`
 }
 
 func DefaultConfig() Config {
-	return Config{Listen: "127.0.0.1:8080", Origin: "https://vpn-admin.example.com", DataDir: "/var/lib/vpn-admin", ServerConfig: "/etc/openvpn/server/server.conf", RoutesFile: "/etc/openvpn/server/routes.conf", StatusFile: "/var/log/openvpn/status.log", EasyRSA: "/etc/openvpn/easy-rsa", CA: "/etc/openvpn/server/ca.crt", TLSKey: "/etc/openvpn/server/tls-crypt.key", CRL: "/etc/openvpn/server/crl.pem", VPNNetwork: "10.8.0.0/24"}
+	return Config{ServerCN: "server", Systemctl: "/usr/bin/systemctl", OpenVPN: "/usr/sbin/openvpn", IPTables: "/usr/sbin/iptables", IPForward: "/proc/sys/net/ipv4/ip_forward", ServiceName: "openvpn-server@server", Listen: "127.0.0.1:8080", Origin: "https://vpn-admin.example.com", DataDir: "/var/lib/vpn-admin", ServerConfig: "/etc/openvpn/server/server.conf", RoutesFile: "/etc/openvpn/server/routes.conf", StatusFile: "/var/log/openvpn/status.log", EasyRSA: "/etc/openvpn/easy-rsa", CA: "/etc/openvpn/server/ca.crt", TLSKey: "/etc/openvpn/server/tls-crypt.key", CRL: "/etc/openvpn/server/crl.pem", VPNNetwork: "10.8.0.0/24"}
 }
 func ReadConfig(path string) (Config, error) {
 	c := DefaultConfig()
@@ -42,15 +52,49 @@ func ReadConfig(path string) (Config, error) {
 	if e != nil {
 		return c, e
 	}
-	e = json.Unmarshal(b, &c)
+	e = decodeJSONC(b, &c)
 	if e != nil {
 		return c, e
+	}
+	var raw map[string]json.RawMessage
+	if e = decodeJSONC(b, &raw); e != nil {
+		return c, e
+	}
+	if _, ok := raw["mode"]; ok {
+		if c.Mode != "demo" && c.Mode != "production" {
+			return c, errors.New("mode 只能为 demo 或 production")
+		}
+		if _, old := raw["fake"]; old && c.Fake != (c.Mode == "demo") {
+			return c, errors.New("mode 与旧 fake 配置冲突，请删除 fake")
+		}
+		c.Fake = c.Mode == "demo"
+	} else if c.Fake {
+		c.Mode = "demo"
+	} else {
+		c.Mode = "production"
+	}
+	c.complete()
+	for _, command := range [][]string{c.RestartCommand, c.StatusCommand} {
+		if len(command) == 0 || !filepath.IsAbs(command[0]) {
+			return c, errors.New("命令必须是以可执行文件绝对路径开头的参数数组")
+		}
+		for _, arg := range command {
+			if strings.ContainsRune(arg, 0) {
+				return c, errors.New("命令参数不能含空字符")
+			}
+		}
+	}
+	if !regexp.MustCompile(`^[a-zA-Z0-9_@.:-]+$`).MatchString(c.ServiceName) || strings.HasPrefix(c.ServiceName, "-") {
+		return c, errors.New("service_name 不合法")
+	}
+	if strings.TrimSpace(c.ServerCN) == "" || strings.ContainsAny(c.ServerCN, "/\n\r\x00") {
+		return c, errors.New("server_cn 不合法")
 	}
 	p, e := netip.ParsePrefix(c.VPNNetwork)
 	if e != nil || !p.Addr().Is4() {
 		return c, errors.New("VPN 网段不合法")
 	}
-	for _, v := range []string{c.DataDir, c.ServerConfig, c.RoutesFile, c.StatusFile, c.EasyRSA, c.CA, c.TLSKey, c.CRL} {
+	for _, v := range []string{c.DataDir, c.ServerConfig, c.RoutesFile, c.StatusFile, c.EasyRSA, c.CA, c.TLSKey, c.CRL, c.PKIDir, c.Systemctl, c.OpenVPN, c.IPTables, c.IPForward} {
 		if !filepath.IsAbs(v) {
 			return c, errors.New("配置路径必须为绝对路径")
 		}
@@ -63,6 +107,26 @@ func ReadConfig(path string) (Config, error) {
 		return c, errors.New("origin 必须为不带路径的完整 HTTP/HTTPS 来源")
 	}
 	return c, nil
+}
+
+// 旧配置仍可读取；显式 mode 决定运行模式。
+func (c *Config) complete() {
+	if c.Mode != "" {
+		c.Fake = c.Mode == "demo"
+	} else if c.Fake {
+		c.Mode = "demo"
+	} else {
+		c.Mode = "production"
+	}
+	if c.PKIDir == "" {
+		c.PKIDir = filepath.Join(c.EasyRSA, "pki")
+	}
+	if c.RestartCommand == nil {
+		c.RestartCommand = []string{c.Systemctl, "restart", c.ServiceName}
+	}
+	if c.StatusCommand == nil {
+		c.StatusCommand = []string{c.Systemctl, "show", c.ServiceName, "--property=ActiveState,ActiveEnterTimestamp,Result", "--no-pager"}
+	}
 }
 
 type Settings struct {
@@ -249,4 +313,32 @@ func routeText(routes []Route, network string) (string, error) {
 		fmt.Fprintf(&b, "push \"route %s %s\"\n", p.Addr(), mask)
 	}
 	return b.String(), nil
+}
+
+// 安装后的命令默认读取二进制同目录配置；本地开发沿用工作目录 config.json。
+func DefaultConfigPath() string {
+	if executable, e := os.Executable(); e == nil {
+		if resolved, e := filepath.EvalSymlinks(executable); e == nil {
+			candidate := filepath.Join(filepath.Dir(resolved), "config.json")
+			if _, e := os.Stat(candidate); e == nil {
+				return candidate
+			}
+		}
+	}
+	if _, e := os.Stat("/etc/vpn-admin/config.json"); e == nil {
+		return "/etc/vpn-admin/config.json"
+	}
+	return "config.json"
+}
+
+// 安装器允许 /etc 下配置入口指向自定义部署目录，读取前解析并校验真实目标。
+func trustedConfig(path string) (string, error) {
+	resolved, e := filepath.EvalSymlinks(path)
+	if e != nil {
+		return "", e
+	}
+	if e = trustedPath(resolved, false); e != nil {
+		return "", e
+	}
+	return resolved, nil
 }

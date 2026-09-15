@@ -43,4 +43,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_VERSION" release/* --verify-tag --title "$RELEASE_VERSION" --generate-notes
+        run: |
+          notes="docs/releases/$RELEASE_VERSION.md"
+          if [[ -f "$notes" ]]; then
+            gh release create "$RELEASE_VERSION" release/* --verify-tag --title "$RELEASE_VERSION" --notes-file "$notes"
+          else
+            gh release create "$RELEASE_VERSION" release/* --verify-tag --title "$RELEASE_VERSION" --generate-notes
+          fi

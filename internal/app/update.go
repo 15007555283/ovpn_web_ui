@@ -438,6 +438,7 @@ func (u updater) install(candidate, tag, oldVersion string) error {
 }
 func Update(args []string) error {
 	flags := flag.NewFlagSet("ovpn-cli update", flag.ContinueOnError)
+	config := flags.String("config", DefaultConfigPath(), "安装配置路径")
 	check := flags.Bool("check", false, "仅检查正式版本，不修改文件")
 	tag := flags.String("version", "", "指定正式版本，例如 v0.1.0")
 	if e := flags.Parse(args); e != nil {
@@ -474,8 +475,8 @@ func Update(args []string) error {
 			return errors.New("已有更新任务运行")
 		}
 		defer closeLock(lock)
-		const configPath = "/etc/vpn-admin/config.json"
-		if e = trustedPath(configPath, false); e != nil {
+		configPath, e := trustedConfig(*config)
+		if e != nil {
 			return e
 		}
 		cfg, e = ReadConfig(configPath)
@@ -485,7 +486,15 @@ func Update(args []string) error {
 		if cfg.Fake {
 			return errors.New("fake 实例不执行系统安装更新")
 		}
-		u = updater{main: "/usr/local/bin/vpn-admin", helper: "/usr/local/libexec/vpn-admin-helper", work: work, helperLock: "/run/vpn-admin-helper/operation.lock", service: updateCommand, active: updateActive, ready: func(v string) error { return updateReady(cfg.Listen, v) }}
+		executable, e := os.Executable()
+		if e != nil {
+			return e
+		}
+		executable, e = filepath.EvalSymlinks(executable)
+		if e != nil {
+			return e
+		}
+		u = updater{main: executable, helper: "/usr/local/libexec/vpn-admin-helper", work: work, helperLock: "/run/vpn-admin-helper/operation.lock", service: updateCommand, active: updateActive, ready: func(v string) error { return updateReady(cfg.Listen, v) }}
 		for _, p := range []string{u.main, u.helper, filepath.Dir(u.helperLock)} {
 			if e = trustedPath(p, false); e != nil {
 				return e

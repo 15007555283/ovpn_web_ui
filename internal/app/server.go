@@ -43,6 +43,7 @@ type App struct {
 }
 
 func New(c Config) (*App, error) {
+	c.complete()
 	if e := os.MkdirAll(c.DataDir, 0700); e != nil {
 		return nil, e
 	}
@@ -50,24 +51,16 @@ func New(c Config) (*App, error) {
 	if e != nil || !fi.IsDir() || fi.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("数据目录必须为非符号链接目录且权限为 0700")
 	}
+	a := &App{c: c, state: initialState(), sessions: map[string]session{}, attempts: map[string]attempt{}}
+	if e := a.load(); e != nil {
+		return nil, e
+	}
 	if c.Fake {
 		if e := setupFake(&c); e != nil {
 			return nil, e
 		}
 	}
-	a := &App{c: c, state: initialState(), sessions: map[string]session{}, attempts: map[string]attempt{}}
-	p := filepath.Join(c.DataDir, "state.json")
-	if fi, e := os.Lstat(p); e == nil && (!fi.Mode().IsRegular() || fi.Mode().Perm() != 0600) {
-		return nil, errors.New("数据文件必须为普通文件且权限为 0600")
-	}
-	b, e := os.ReadFile(p)
-	if e == nil {
-		if e = json.Unmarshal(b, &a.state); e != nil {
-			return nil, errors.New("数据文件损坏，拒绝覆盖")
-		}
-	} else if !os.IsNotExist(e) {
-		return nil, e
-	}
+	a.c = c
 	a.vpn = callHelper
 	if c.Fake {
 		m := newManager(c)
@@ -80,13 +73,6 @@ func New(c Config) (*App, error) {
 		}
 	}
 	return a, nil
-}
-func (a *App) save() error {
-	b, e := json.MarshalIndent(a.state, "", "  ")
-	if e != nil {
-		return e
-	}
-	return atomicWrite(filepath.Join(a.c.DataDir, "state.json"), b, 0600)
 }
 func (a *App) Router() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -166,7 +152,7 @@ func (a *App) Router() *gin.Engine {
 		c.Next()
 	})
 	api.GET("/setup/status", func(c *gin.Context) {
-		success(c, gin.H{"needs_setup": a.state.Admin == "", "fake": a.c.Fake, "version": version.Value})
+		success(c, gin.H{"needs_setup": a.state.Admin == "", "mode": a.c.Mode, "fake": a.c.Fake, "version": version.Value})
 	})
 	api.POST("/setup/admin", a.setup)
 	api.POST("/auth/login", a.login)
@@ -176,7 +162,7 @@ func (a *App) Router() *gin.Engine {
 		a.cookie(c, "", -1)
 		a.finish(c, "logout", "", nil, nil)
 	})
-	api.GET("/auth/me", func(c *gin.Context) { success(c, gin.H{"username": a.state.Admin, "fake": a.c.Fake}) })
+	api.GET("/auth/me", func(c *gin.Context) { success(c, gin.H{"username": a.state.Admin, "mode": a.c.Mode, "fake": a.c.Fake}) })
 	api.PUT("/auth/password", a.password)
 	api.GET("/settings", func(c *gin.Context) { success(c, a.state.Settings) })
 	api.PUT("/settings", a.settings)
@@ -789,7 +775,7 @@ func (a *App) restart(c *gin.Context) {
 		return
 	}
 	_, e := a.vpn(VPNRequest{Action: "service-restart"})
-	a.finish(c, "service-restart", serviceName, nil, e)
+	a.finish(c, "service-restart", a.c.ServiceName, nil, e)
 }
 func (a *App) diagnostics(c *gin.Context) {
 	v, e := a.vpn(VPNRequest{Action: "health-check"})
@@ -825,7 +811,15 @@ func (a *App) dashboard(c *gin.Context) {
 	for i := len(a.state.Audits) - 1; i >= 0 && len(logs) < 10; i-- {
 		logs = append(logs, a.state.Audits[i])
 	}
-	success(c, gin.H{"online": online, "health": v.Health, "total_users": len(a.state.Users), "active_certificates": active, "revoked_certificates": revoked, "routes": len(a.state.Routes), "recent": logs, "settings": a.state.Settings})
+	var totalCount, activeCount, revokedCount, routeCount any = len(a.state.Users), active, revoked, len(a.state.Routes)
+	if !a.c.Fake {
+		totalCount, activeCount, revokedCount, routeCount = nil, nil, nil, nil
+		if stats, ok := v.Health["certificates"].(map[string]any); ok {
+			totalCount, activeCount, revokedCount = stats["total"], stats["active"], stats["revoked"]
+		}
+		routeCount = v.Health["applied_routes"]
+	}
+	success(c, gin.H{"mode": a.c.Mode, "online": online, "health": v.Health, "total_users": totalCount, "active_certificates": activeCount, "revoked_certificates": revokedCount, "routes": routeCount, "recent": logs, "settings": a.state.Settings})
 }
 func (a *App) auditList(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

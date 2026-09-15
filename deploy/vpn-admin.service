@@ -6,8 +6,8 @@ After=network.target
 Type=simple
 User=vpn-admin
 Group=vpn-admin
-ExecStart=/usr/local/bin/vpn-admin -config /etc/vpn-admin/config.json
-WorkingDirectory=/var/lib/vpn-admin
+ExecStart=/data/ovpn/ovpn-cli --config /data/ovpn/config.json
+WorkingDirectory=/data/ovpn/data
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=190
@@ -19,7 +19,7 @@ ProtectHome=true
 ProtectSystem=full
 # 受限 helper 通过 sudo 提权，因此这里不能开启 NoNewPrivileges。
 # /etc/openvpn 仅对 helper 可写，Web 用户仍受 Unix 文件权限限制。
-ReadWritePaths=/etc/openvpn /var/lib/vpn-admin /run/vpn-admin-helper
+ReadWritePaths=/etc/openvpn /data/ovpn/data /run/vpn-admin-helper
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]

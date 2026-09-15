@@ -146,7 +146,14 @@ func TestHTTPFlow(t *testing.T) {
 	if strings.Contains(profile.Body.String(), "redirect-gateway") || profile.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("不安全的下载")
 	}
-	state, _ := os.ReadFile(filepath.Join(a.c.DataDir, "state.json"))
+	restored, e := New(a.c)
+	if e != nil {
+		t.Fatal(e)
+	}
+	state, e := json.Marshal(restored.state)
+	if e != nil {
+		t.Fatal(e)
+	}
 	if strings.Contains(string(state), "PRIVATE KEY") || strings.Contains(string(state), "a-secure-password-123") || strings.Contains(string(state), "<tls-crypt>") {
 		t.Fatal("敏感数据进入 JSON")
 	}

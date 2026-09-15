@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
+	"os/exec"
 
 	"ovpn-web-ui/internal/app"
 	"ovpn-web-ui/internal/version"
@@ -31,11 +31,18 @@ func main() {
 		}
 		return
 	}
-	path := flag.String("config", "config.json", "配置文件")
-	if filepath.Base(os.Args[0]) == "ovpn-cli" {
-		fmt.Println("用法：ovpn-cli version | ovpn-cli update --check | sudo ovpn-cli update [--version vX.Y.Z]")
-		return
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "start", "stop", "restart", "status":
+			cmd := exec.Command("/usr/bin/systemctl", os.Args[1], "vpn-admin.service")
+			cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
+			if e := cmd.Run(); e != nil {
+				fail(e)
+			}
+			return
+		}
 	}
+	path := flag.String("config", app.DefaultConfigPath(), "配置文件（支持 --config）")
 	flag.Parse()
 	c, e := app.ReadConfig(*path)
 	if e != nil {

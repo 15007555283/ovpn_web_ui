@@ -54,3 +54,7 @@
 - `applied_revision=-1` 表示新实例尚未应用；不会假定现有服务器文件与空 JSON 相同。
 - 状态文件不可用时响应仍为 200，但 `available=false`，页面不得将其解释为零人在线。
 - 私钥不会出现在任何 JSON 响应或持久化元数据中。仅授权下载附件包含对应客户端私钥。
+
+## 运行模式与生产统计
+
+`/setup/status`、`/auth/me`、`/dashboard` 返回 `mode`（`demo` 或 `production`），保留 `fake` 的接口兼容字段（dashboard 通过 mode 区分）。生产 `/dashboard` 的 `total_users`、`active_certificates`、`revoked_certificates` 来源为实际 PKI 索引，`routes` 来源为当前服务器路由文件；读取失败字段为 `null`。`health.certificate_error` 提供 PKI 不可用原因。在线统计继续通过 `online.available` 判断可用性。
