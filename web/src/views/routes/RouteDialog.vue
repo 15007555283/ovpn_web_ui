@@ -20,12 +20,12 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; submit: [form: RouteForm] }>();
 const { loading, error } = useAppContext();
 const form = reactive<RouteForm>({
-  lines: "",
+  lines: props.route?.cidr ?? "",
   remark: props.route?.remark ?? "",
 });
 const titles: Record<RouteAction, string> = {
   batch: "新增分流路由",
-  "edit-route": "编辑路由备注",
+  "edit-route": "编辑分流路由",
   "delete-route": "删除分流路由",
   apply: "应用路由配置",
 };
@@ -47,7 +47,6 @@ const titles: Record<RouteAction, string> = {
     <NAlert v-if="error" type="error" class="banner">{{ error }}</NAlert>
     <NForm v-if="action === 'batch' || action === 'edit-route'">
       <NFormItem
-        v-if="action === 'batch'"
         label="目标 IP / CIDR（每行一条，最多 500 行）"
         ><NInput
           v-model:value="form.lines"
@@ -55,6 +54,7 @@ const titles: Record<RouteAction, string> = {
           :rows="6"
           placeholder="8.8.8.8&#10;20.30.40.0/24"
       /></NFormItem>
+      <p class="muted">多个地址保存为同一条列表记录，共用备注和启用状态；应用配置时展开为多条路由。全部校验通过才保存。</p>
       <NFormItem label="备注"
         ><NInput v-model:value="form.remark" type="textarea" :rows="3"
       /></NFormItem>

@@ -21,9 +21,9 @@
 | GET | `/vpn-users/:id/config` | 附件下载，实时校验证书、PKI 索引和密钥匹配 |
 | POST | `/vpn-users/:id/regenerate-config` | 保存当前连接设置快照，校验证书；不在 JSON 返回配置 |
 | GET | `/routes` | 全部规则 |
-| POST | `/routes` | `cidr`、`remark` |
+| POST | `/routes` | `cidr` 或 `lines`（换行分隔多个地址）、`remark`；保存为一条记录 |
 | POST | `/routes/batch` | `lines`（换行分隔）、`remark`；最多 500 行，逐行结果 |
-| PUT | `/routes/:id` | `remark`、`enabled` |
+| PUT | `/routes/:id` | `remark`、`enabled`、可选 `lines`（换行分隔目标 IP / CIDR） |
 | DELETE | `/routes/:id` | 删除草稿记录 |
 | GET | `/routes/pending` | `revision`、`applied_revision`、`pending`、`history` |
 | POST | `/routes/apply` | `revision`、`confirm:true`；冲突返回 409，重复已应用版本不重启 |
@@ -65,3 +65,11 @@
 - `health.started_at` 使用服务器本地时间 `YYYY-MM-DD HH:mm:ss`；无法解析时为空字符串，页面显示 `—`。
 - `GET /api/v1/system/version`：需要管理员登录，返回 `current`、`latest`、`update_available`、`release_url`。复用 GitHub 正式版查询，成功结果缓存 60 秒，请求超时 5 秒；失败返回 `502 VERSION_CHECK_FAILED`，不显示为“已是最新版本”。
 - 仪表盘提供 `sudo ovpn-cli update` 命令说明，页面检查不会自动安装程序或重启服务。
+
+### 编辑多个路由地址
+
+`POST /routes` 和 `PUT /routes/:id` 支持 `lines`，每行一个 IP / CIDR。多个地址合并为一条记录，共用备注、启用状态和 ID；编辑时整体替换该组地址，保留原 ID 和创建时间。不传 `lines` 的编辑仍只修改备注及启用状态。
+
+`cidr` 字段保存规范化地址，多个地址用换行分隔，旧单地址记录无需迁移。列表用逗号分隔展示，编辑时每行一个地址；应用时逐个展开为独立的 OpenVPN `push route`。禁用或删除整组对组内全部地址生效。
+
+每组最多 500 行，全局最多 4096 个地址。忽略空行；空地址、非法网段、重复或被现有规则覆盖的地址会整组拒绝。新增或编辑一次只增加一个草稿版本，不自动应用或重启 OpenVPN。旧 `/routes/batch` 继续按行建立独立记录，重复校验同时检查组内地址。

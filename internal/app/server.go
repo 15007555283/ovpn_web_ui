@@ -574,7 +574,11 @@ func (a *App) regenerate(c *gin.Context) {
 	a.finish(c, "config-regenerate", u.Username, u, e)
 }
 func (a *App) addOne(cidr, remark string) error {
-	if len(a.state.Routes) >= 4096 || len(remark) > 1000 {
+	count := 0
+	for _, r := range a.state.Routes {
+		count += len(strings.Split(r.CIDR, "\n"))
+	}
+	if count >= 4096 || len(remark) > 1000 {
 		return errors.New("路由数量或备注超过上限")
 	}
 	p, e := routePrefix(strings.TrimSpace(cidr), a.c.VPNNetwork)
@@ -582,9 +586,14 @@ func (a *App) addOne(cidr, remark string) error {
 		return e
 	}
 	for _, r := range a.state.Routes {
-		q, _ := routePrefix(r.CIDR, a.c.VPNNetwork)
-		if q.Bits() <= p.Bits() && q.Contains(p.Addr()) {
-			return errors.New("ROUTE_DUPLICATE: 已存在或被现有规则覆盖")
+		for _, cidr := range strings.Split(r.CIDR, "\n") {
+			q, err := routePrefix(cidr, a.c.VPNNetwork)
+			if err != nil {
+				return err
+			}
+			if q.Bits() <= p.Bits() && q.Contains(p.Addr()) {
+				return errors.New("ROUTE_DUPLICATE: 已存在或被现有规则覆盖")
+			}
 		}
 	}
 	now := time.Now()
@@ -592,23 +601,56 @@ func (a *App) addOne(cidr, remark string) error {
 	a.state.Revision++
 	return nil
 }
+
+// 单地址兼容旧数据，多地址用换行保存；每条列表记录共用备注与启用状态。
 func (a *App) addRoute(c *gin.Context) {
 	var in struct {
-		CIDR   string `json:"cidr"`
-		Remark string `json:"remark"`
+		CIDR   string  `json:"cidr"`
+		Lines  *string `json:"lines"`
+		Remark string  `json:"remark"`
 	}
 	if !body(c, &in) {
 		return
 	}
-	old := a.state
-	e := a.addOne(in.CIDR, in.Remark)
-	if e == nil {
-		e = a.save()
-		if e != nil {
-			a.state = old
+	if in.Lines == nil {
+		in.Lines = &in.CIDR
+	}
+	lines := strings.Split(*in.Lines, "\n")
+	if len(lines) > 500 {
+		failure(c, 400, "INVALID_INPUT", "每批最多 500 行")
+		return
+	}
+	draft := &App{c: a.c}
+	draft.state.Routes = append([]Route(nil), a.state.Routes...)
+	count := len(draft.state.Routes)
+	for line, value := range lines {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if err := draft.addOne(value, in.Remark); err != nil {
+			failure(c, 400, "INVALID_INPUT", fmt.Sprintf("第 %d 行：%s", line+1, err))
+			return
 		}
 	}
-	a.finish(c, "route-add", in.CIDR, nil, e)
+	added := draft.state.Routes[count:]
+	if len(added) == 0 {
+		failure(c, 400, "INVALID_INPUT", "至少填写一个目标 IP / CIDR")
+		return
+	}
+	addresses := make([]string, len(added))
+	for i := range added {
+		addresses[i] = added[i].CIDR
+	}
+	group := added[0]
+	group.CIDR = strings.Join(addresses, "\n")
+	old := a.state
+	a.state.Routes = append(append([]Route(nil), a.state.Routes...), group)
+	a.state.Revision++
+	err := a.save()
+	if err != nil {
+		a.state = old
+	}
+	a.finish(c, "route-add", group.ID, group, err)
 }
 func (a *App) batchRoutes(c *gin.Context) {
 	var in struct {
@@ -644,14 +686,14 @@ func (a *App) batchRoutes(c *gin.Context) {
 	a.finish(c, "route-batch", "routes", results, e)
 }
 func (a *App) editRoute(c *gin.Context) {
-	for i := range a.state.Routes {
-		r := &a.state.Routes[i]
-		if r.ID != c.Param("id") {
+	for i, original := range a.state.Routes {
+		if original.ID != c.Param("id") {
 			continue
 		}
 		var in struct {
-			Remark  string `json:"remark"`
-			Enabled bool   `json:"enabled"`
+			Remark  string  `json:"remark"`
+			Enabled bool    `json:"enabled"`
+			Lines   *string `json:"lines"`
 		}
 		if !body(c, &in) {
 			return
@@ -660,17 +702,49 @@ func (a *App) editRoute(c *gin.Context) {
 			failure(c, 400, "INVALID_INPUT", "备注过长")
 			return
 		}
-		old := *r
-		r.Remark = in.Remark
-		r.Enabled = in.Enabled
-		r.Updated = time.Now()
-		a.state.Revision++
-		e := a.save()
-		if e != nil {
-			*r = old
-			a.state.Revision--
+		old := a.state
+		routes := append([]Route(nil), a.state.Routes...)
+		updated := original
+		updated.Remark, updated.Enabled, updated.Updated = in.Remark, in.Enabled, time.Now()
+		routes[i] = updated
+		if in.Lines != nil {
+			lines := strings.Split(*in.Lines, "\n")
+			if len(lines) > 500 {
+				failure(c, 400, "INVALID_INPUT", "每批最多 500 行")
+				return
+			}
+			// 先在独立草稿校验全部地址，任意一行失败都不修改原路由。
+			draft := &App{c: a.c}
+			draft.state.Routes = append(append([]Route(nil), routes[:i]...), routes[i+1:]...)
+			count := len(draft.state.Routes)
+			for line, value := range lines {
+				if strings.TrimSpace(value) == "" {
+					continue
+				}
+				if err := draft.addOne(value, in.Remark); err != nil {
+					failure(c, 400, "INVALID_INPUT", fmt.Sprintf("第 %d 行：%s", line+1, err.Error()))
+					return
+				}
+			}
+			added := draft.state.Routes[count:]
+			if len(added) == 0 {
+				failure(c, 400, "INVALID_INPUT", "至少填写一个目标 IP / CIDR")
+				return
+			}
+			addresses := make([]string, len(added))
+			for j := range added {
+				addresses[j] = added[j].CIDR
+			}
+			updated.CIDR = strings.Join(addresses, "\n")
+			routes[i] = updated
 		}
-		a.finish(c, "route-edit", r.CIDR, r, e)
+		a.state.Routes = routes
+		a.state.Revision++
+		err := a.save()
+		if err != nil {
+			a.state = old
+		}
+		a.finish(c, "route-edit", original.ID, routes[i], err)
 		return
 	}
 	failure(c, 404, "NOT_FOUND", "路由不存在")

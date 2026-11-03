@@ -46,14 +46,16 @@ async function save(form: RouteForm) {
     const path = "/routes/" + selected.value?.id;
     switch (modal.value) {
       case "batch":
-        batch.value = await api<BatchResult[]>("/routes/batch", "POST", form);
-        await refresh();
-        return;
+        await api("/routes", "POST", form);
+        notice.value = "路由组已保存，应用配置后生效";
+        break;
       case "edit-route":
         await api(path, "PUT", {
+          lines: form.lines,
           remark: form.remark,
           enabled: selected.value?.enabled,
         });
+        notice.value = "路由草稿已保存，应用配置后生效";
         break;
       case "delete-route":
         await api(path, "DELETE");
@@ -91,7 +93,9 @@ const revisionColumns = [
 ];
 defineExpose({ refresh, isEditing });
 const routeColumns = [
-  { title: "目标 CIDR", key: "cidr", minWidth: 150 },
+  { title: "目标 IP / 网段", key: "cidr", minWidth: 180,
+    render: (r: Route) => r.cidr.split("\n").join(", "),
+  },
   { title: "备注", key: "remark", minWidth: 200 },
   {
     title: "状态",
@@ -127,7 +131,7 @@ const routeColumns = [
     minWidth: 130,
     render: (r: Route) =>
       h("div", { class: "actions" }, [
-        button("编辑备注", () => open("edit-route", r)),
+        button("编辑", () => open("edit-route", r)),
         button("删除", () => open("delete-route", r), true),
       ]),
   },

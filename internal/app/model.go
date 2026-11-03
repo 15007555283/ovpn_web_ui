@@ -301,16 +301,23 @@ func routePrefix(s, network string) (netip.Prefix, error) {
 }
 func routeText(routes []Route, network string) (string, error) {
 	var b strings.Builder
+	count := 0
 	for _, r := range routes {
 		if !r.Enabled {
 			continue
 		}
-		p, e := routePrefix(r.CIDR, network)
-		if e != nil {
-			return "", e
+		for _, cidr := range strings.Split(r.CIDR, "\n") {
+			count++
+			if count > 4096 {
+				return "", errors.New("路由地址数量超过上限")
+			}
+			p, e := routePrefix(cidr, network)
+			if e != nil {
+				return "", e
+			}
+			mask := net.IP(net.CIDRMask(p.Bits(), 32)).String()
+			fmt.Fprintf(&b, "push \"route %s %s\"\n", p.Addr(), mask)
 		}
-		mask := net.IP(net.CIDRMask(p.Bits(), 32)).String()
-		fmt.Fprintf(&b, "push \"route %s %s\"\n", p.Addr(), mask)
 	}
 	return b.String(), nil
 }
