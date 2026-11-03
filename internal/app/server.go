@@ -34,6 +34,7 @@ type attempt struct {
 	Requests int
 }
 type App struct {
+	egressStatus   EgressStatus
 	versionStatus  *VersionStatus
 	versionChecked time.Time
 
@@ -188,6 +189,7 @@ func (a *App) Router() *gin.Engine {
 	api.GET("/sessions/online", a.online)
 	api.GET("/system/health", a.health)
 	api.GET("/system/version", a.checkVersion)
+	api.GET("/system/egress-ip", a.egressIP)
 	api.GET("/system/openvpn", a.health)
 	api.GET("/system/diagnostics", a.diagnostics)
 	api.POST("/system/openvpn/restart", a.restart)

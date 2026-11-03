@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { NAlert, NButton, NTag } from "naive-ui";
 import VersionStatus from "../components/VersionStatus.vue";
+import EgressIP from "../components/EgressIP.vue";
 import AuditTable from "../components/AuditTable.vue";
 import { api } from "../api/client";
 import { useAppContext } from "../composables/useAppContext";
@@ -78,6 +79,7 @@ defineExpose({ refresh });
           <h3>网络健康</h3>
           <NTag size="small" :bordered="false">实时概况</NTag>
         </div>
+        <EgressIP />
         <div class="health-row">
           <span>服务启动时间</span><span>{{ health.started_at || "—" }}</span>
         </div>
