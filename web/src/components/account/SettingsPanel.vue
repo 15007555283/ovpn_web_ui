@@ -9,12 +9,11 @@ import {
   NInputNumber,
   NSelect,
 } from "naive-ui";
-import { api } from "../api/client";
-import { useAppContext } from "../composables/useAppContext";
-import type { Settings } from "../types";
-const { settings: appSettings, loading, notice, logged, run } = useAppContext();
+import { api } from "../../api/client";
+import { useAppContext } from "../../composables/useAppContext";
+import type { Settings } from "../../types";
+const { settings: appSettings, loading, notice, run } = useAppContext();
 const settings = reactive({ ...appSettings });
-const password = reactive({ old_password: "", new_password: "" });
 async function refresh() {
   const data = await api<Settings>("/settings");
   Object.assign(settings, data);
@@ -27,20 +26,10 @@ async function saveSettings() {
     notice.value = "设置已保存，新会话使用新的有效期";
   });
 }
-async function changePassword() {
-  await run(async () => {
-    await api("/auth/password", "PUT", password);
-    password.old_password = "";
-    password.new_password = "";
-    logged.value = false;
-    notice.value = "密码已修改，请重新登录";
-  });
-}
 defineExpose({ refresh });
 </script>
 <template>
-  <section class="panel settings">
-    <h3>连接与界面设置</h3>
+  <section>
     <NAlert type="info" :bordered="false" class="banner"
       >连接地址、端口和协议用于生成客户端配置，不修改服务器监听配置。修改后，用户设备上的旧配置需要重新下载并导入。</NAlert
     ><NForm label-placement="top"
@@ -81,24 +70,6 @@ defineExpose({ refresh });
       </div>
       <NButton type="primary" :loading="loading" @click="saveSettings"
         >保存设置</NButton
-      ></NForm
-    >
-  </section>
-  <section class="panel settings">
-    <h3>修改管理员密码</h3>
-    <NForm
-      ><NFormItem label="原密码"
-        ><NInput
-          v-model:value="password.old_password"
-          type="password"
-          autocomplete="current-password" /></NFormItem
-      ><NFormItem label="新密码（12～72 字节）"
-        ><NInput
-          v-model:value="password.new_password"
-          type="password"
-          autocomplete="new-password" /></NFormItem
-      ><NButton :loading="loading" @click="changePassword"
-        >修改密码并退出</NButton
       ></NForm
     >
   </section>

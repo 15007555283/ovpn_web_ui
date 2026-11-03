@@ -8,18 +8,22 @@ import {
   NInput,
   NModal,
   NTag,
+  NSelect,
 } from "naive-ui";
 import { useAppContext } from "../../composables/useAppContext";
-import type { Route, BatchResult } from "../../types";
+import type { Route, RouteProject, BatchResult } from "../../types";
 import type { RouteAction, RouteForm } from "./types";
 const props = defineProps<{
   action: RouteAction;
+  projects: RouteProject[];
+  defaultProject: string;
   route?: Route;
   batch: BatchResult[];
 }>();
 const emit = defineEmits<{ close: []; submit: [form: RouteForm] }>();
 const { loading, error } = useAppContext();
 const form = reactive<RouteForm>({
+  project_id: props.route?.project_id ?? props.defaultProject,
   lines: props.route?.cidr ?? "",
   remark: props.route?.remark ?? "",
 });
@@ -46,6 +50,9 @@ const titles: Record<RouteAction, string> = {
   >
     <NAlert v-if="error" type="error" class="banner">{{ error }}</NAlert>
     <NForm v-if="action === 'batch' || action === 'edit-route'">
+      <NFormItem label="所属项目">
+        <NSelect v-model:value="form.project_id" :options="[{label: '未分组', value: ''}, ...projects.map(p => ({label: p.name, value: p.id}))]" />
+      </NFormItem>
       <NFormItem
         label="目标 IP / CIDR（每行一条，最多 500 行）"
         ><NInput
@@ -68,7 +75,7 @@ const titles: Record<RouteAction, string> = {
     <template v-else>
       <NAlert type="warning" :bordered="false">{{
         action === "apply"
-          ? "应用配置会用已启用路由替换服务器现有分流规则，并重启 OpenVPN、中断当前连接。客户端需要重新连接才能收到新路由。"
+          ? "应用配置会汇总全部项目的已启用路由，并用这些路由替换服务器现有分流规则，并重启 OpenVPN、中断当前连接。客户端需要重新连接才能收到新路由。"
           : "删除规则后需应用配置才会生效。"
       }}</NAlert>
       <p v-if="action === 'delete-route'">{{ route?.cidr }}</p>

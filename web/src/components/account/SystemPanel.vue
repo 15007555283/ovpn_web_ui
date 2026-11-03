@@ -7,10 +7,10 @@ import {
   NDescriptionsItem,
   NModal,
 } from "naive-ui";
-import { api, downloadFile } from "../api/client";
-import { useAppContext } from "../composables/useAppContext";
-import { healthNames } from "../utils/health";
-import type { Health } from "../types";
+import { api, downloadFile } from "../../api/client";
+import { useAppContext } from "../../composables/useAppContext";
+import { healthNames } from "../../utils/health";
+import type { Health } from "../../types";
 const { loading, error, notice, run } = useAppContext();
 const health = ref<Health>({}),
   restarting = ref(false);
@@ -31,7 +31,7 @@ async function restart() {
 defineExpose({ refresh, isEditing });
 </script>
 <template>
-  <section class="panel">
+  <section>
     <div class="panel-title">
       <h3>服务与运行环境</h3>
       <div class="actions">

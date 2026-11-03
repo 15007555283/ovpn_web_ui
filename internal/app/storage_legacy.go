@@ -149,6 +149,8 @@ func storageComment(key string) string {
 		return "客户端连接参数及后台显示设置"
 	case "users":
 		return "VPN 用户及证书元数据，不存储证书私钥"
+	case "projects":
+		return "分流项目名称和备注"
 	case "routes":
 		return "分流路由草稿，应用后才写入 OpenVPN"
 	case "revisions":

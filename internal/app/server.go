@@ -177,6 +177,10 @@ func (a *App) Router() *gin.Engine {
 	api.POST("/vpn-users/:id/revoke", a.revokeUser)
 	api.GET("/vpn-users/:id/config", a.download)
 	api.POST("/vpn-users/:id/regenerate-config", a.regenerate)
+	api.GET("/route-projects", func(c *gin.Context) { success(c, a.state.Projects) })
+	api.POST("/route-projects", a.saveProject)
+	api.PUT("/route-projects/:id", a.saveProject)
+	api.DELETE("/route-projects/:id", a.deleteProject)
 	api.GET("/routes", func(c *gin.Context) { success(c, a.state.Routes) })
 	api.POST("/routes", a.addRoute)
 	api.POST("/routes/batch", a.batchRoutes)
@@ -607,11 +611,16 @@ func (a *App) addOne(cidr, remark string) error {
 // 单地址兼容旧数据，多地址用换行保存；每条列表记录共用备注与启用状态。
 func (a *App) addRoute(c *gin.Context) {
 	var in struct {
-		CIDR   string  `json:"cidr"`
-		Lines  *string `json:"lines"`
-		Remark string  `json:"remark"`
+		ProjectID string  `json:"project_id"`
+		CIDR      string  `json:"cidr"`
+		Lines     *string `json:"lines"`
+		Remark    string  `json:"remark"`
 	}
 	if !body(c, &in) {
+		return
+	}
+	if !a.hasProject(in.ProjectID) {
+		failure(c, 400, "INVALID_INPUT", "项目不存在")
 		return
 	}
 	if in.Lines == nil {
@@ -644,6 +653,7 @@ func (a *App) addRoute(c *gin.Context) {
 		addresses[i] = added[i].CIDR
 	}
 	group := added[0]
+	group.ProjectID = in.ProjectID
 	group.CIDR = strings.Join(addresses, "\n")
 	old := a.state
 	a.state.Routes = append(append([]Route(nil), a.state.Routes...), group)
@@ -693,9 +703,10 @@ func (a *App) editRoute(c *gin.Context) {
 			continue
 		}
 		var in struct {
-			Remark  string  `json:"remark"`
-			Enabled bool    `json:"enabled"`
-			Lines   *string `json:"lines"`
+			ProjectID *string `json:"project_id"`
+			Remark    string  `json:"remark"`
+			Enabled   bool    `json:"enabled"`
+			Lines     *string `json:"lines"`
 		}
 		if !body(c, &in) {
 			return
@@ -704,9 +715,16 @@ func (a *App) editRoute(c *gin.Context) {
 			failure(c, 400, "INVALID_INPUT", "备注过长")
 			return
 		}
+		if in.ProjectID != nil && !a.hasProject(*in.ProjectID) {
+			failure(c, 400, "INVALID_INPUT", "项目不存在")
+			return
+		}
 		old := a.state
 		routes := append([]Route(nil), a.state.Routes...)
 		updated := original
+		if in.ProjectID != nil {
+			updated.ProjectID = *in.ProjectID
+		}
 		updated.Remark, updated.Enabled, updated.Updated = in.Remark, in.Enabled, time.Now()
 		routes[i] = updated
 		if in.Lines != nil {

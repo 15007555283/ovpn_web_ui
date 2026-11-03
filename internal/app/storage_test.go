@@ -46,7 +46,7 @@ func TestStorageMigrationAndChunks(t *testing.T) {
 	if e = decodeJSONC(b, &before); e != nil {
 		t.Fatal(e)
 	}
-	if before.AuditChunks != 3 || len(before.Files) != 8 {
+	if before.AuditChunks != 3 || len(before.Files) != 9 {
 		t.Fatal(before)
 	}
 	a.state.Settings.Name = "更改设置"
@@ -184,7 +184,7 @@ func TestHashedStoreMigratesIntoModuleFiles(t *testing.T) {
 	if len(a.state.Users) != 1 || a.state.Users[0].Username != "existing-client" {
 		t.Fatal("旧用户数据丢失")
 	}
-	for _, name := range []string{"admin", "settings", "users", "routes", "revisions", "metadata"} {
+	for _, name := range []string{"admin", "settings", "users", "routes", "projects", "revisions", "metadata"} {
 		if _, e := os.Stat(filepath.Join(c.DataDir, "db", name+".jsonc")); e != nil {
 			t.Fatal(e)
 		}

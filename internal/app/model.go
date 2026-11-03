@@ -189,13 +189,20 @@ type User struct {
 	Updated         time.Time `json:"updated_at"`
 	Revoked         time.Time `json:"revoked_at"`
 }
+type RouteProject struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Remark string `json:"remark"`
+}
+
 type Route struct {
-	ID      string    `json:"id"`
-	CIDR    string    `json:"cidr"`
-	Remark  string    `json:"remark"`
-	Enabled bool      `json:"enabled"`
-	Created time.Time `json:"created_at"`
-	Updated time.Time `json:"updated_at"`
+	ProjectID string    `json:"project_id"`
+	ID        string    `json:"id"`
+	CIDR      string    `json:"cidr"`
+	Remark    string    `json:"remark"`
+	Enabled   bool      `json:"enabled"`
+	Created   time.Time `json:"created_at"`
+	Updated   time.Time `json:"updated_at"`
 }
 type Audit struct {
 	Time      time.Time `json:"created_at"`
@@ -214,19 +221,20 @@ type Revision struct {
 	Time     time.Time `json:"created_at"`
 }
 type State struct {
-	Admin        string     `json:"admin"`
-	PasswordHash string     `json:"password_hash"`
-	Settings     Settings   `json:"settings"`
-	Users        []User     `json:"users"`
-	Routes       []Route    `json:"routes"`
-	Audits       []Audit    `json:"audit_logs"`
-	Revision     int        `json:"revision"`
-	Applied      int        `json:"applied_revision"`
-	Revisions    []Revision `json:"route_revisions"`
+	Projects     []RouteProject `json:"projects"`
+	Admin        string         `json:"admin"`
+	PasswordHash string         `json:"password_hash"`
+	Settings     Settings       `json:"settings"`
+	Users        []User         `json:"users"`
+	Routes       []Route        `json:"routes"`
+	Audits       []Audit        `json:"audit_logs"`
+	Revision     int            `json:"revision"`
+	Applied      int            `json:"applied_revision"`
+	Revisions    []Revision     `json:"route_revisions"`
 }
 
 func initialState() State {
-	return State{Applied: -1, Settings: Settings{Endpoint: "vpn.example.com", Port: 1194, Protocol: "udp", Refresh: 10, SessionHours: 8, Name: "VPN Admin"}, Users: []User{}, Routes: []Route{}, Audits: []Audit{}, Revisions: []Revision{}}
+	return State{Projects: []RouteProject{}, Applied: -1, Settings: Settings{Endpoint: "vpn.example.com", Port: 1194, Protocol: "udp", Refresh: 10, SessionHours: 8, Name: "VPN Admin"}, Users: []User{}, Routes: []Route{}, Audits: []Audit{}, Revisions: []Revision{}}
 }
 func token() string {
 	b := make([]byte, 32)

@@ -3,9 +3,7 @@ export type PageKey =
   | "users"
   | "routes"
   | "online"
-  | "system"
-  | "audit"
-  | "settings";
+  | "audit";
 export interface PageView {
   refresh(): Promise<void>;
   isEditing?: boolean;
@@ -30,7 +28,13 @@ export interface VPNUser {
   created_at: string;
   last_connected_at: string;
 }
+export interface RouteProject {
+ id: string;
+ name: string;
+ remark: string;
+}
 export interface Route {
+ project_id?: string;
   id: string;
   cidr: string;
   remark: string;

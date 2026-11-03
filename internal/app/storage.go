@@ -12,7 +12,7 @@ import (
 
 const dbMigratedState = "系统业务数据已按模块保存到 db/ 目录；此文件仅阻止旧版误建空库，不包含业务数据。\n"
 
-var moduleName = regexp.MustCompile(`^(admin|settings|users|routes|revisions|audits-[0-9]{6,})$`)
+var moduleName = regexp.MustCompile(`^(admin|settings|users|routes|projects|revisions|audits-[0-9]{6,})$`)
 
 func privateDir(dir string) error {
 	fi, e := os.Lstat(dir)
@@ -33,7 +33,11 @@ func readManifest(dir string) (storageManifest, error) {
 	if e = decodeJSONC(b, &m); e != nil {
 		return m, e
 	}
-	if m.Version != 2 || m.AuditChunks < 0 || len(m.Files) != 5+m.AuditChunks {
+	modules := 5
+	if m.Version == 3 {
+		modules = 6
+	}
+	if (m.Version != 2 && m.Version != 3) || m.AuditChunks < 0 || len(m.Files) != modules+m.AuditChunks {
 		return m, errors.New("数据库元信息无效")
 	}
 	for _, key := range []string{"admin", "settings", "users", "routes", "revisions"} {
@@ -45,6 +49,9 @@ func readManifest(dir string) (storageManifest, error) {
 		if m.Files[fmt.Sprintf("audits-%06d", i)] == "" {
 			return m, errors.New("缺少审计分片")
 		}
+	}
+	if m.Version == 3 && m.Files["projects"] == "" {
+		return m, errors.New("缺少模块: projects")
 	}
 	for key := range m.Files {
 		if !moduleName.MatchString(key) {
@@ -183,6 +190,11 @@ func (a *App) load() error {
 			return e
 		}
 	}
+	if m.Version == 3 {
+		if e = read("projects", &a.state.Projects); e != nil {
+			return e
+		}
+	}
 	a.state.Admin, a.state.PasswordHash = admin.Admin, admin.PasswordHash
 	a.state.Revision, a.state.Applied, a.state.Revisions = revisions.Revision, revisions.Applied, revisions.Revisions
 	for i := 0; i < m.AuditChunks; i++ {
@@ -210,8 +222,8 @@ func (a *App) save() error {
 	if e := os.Mkdir(pending, 0700); e != nil {
 		return e
 	}
-	m := storageManifest{Version: 2, Mode: a.c.Mode, Files: map[string]string{}}
-	parts := map[string]any{"admin": adminData{a.state.Admin, a.state.PasswordHash}, "settings": a.state.Settings, "users": a.state.Users, "routes": a.state.Routes, "revisions": revisionData{a.state.Revision, a.state.Applied, a.state.Revisions}}
+	m := storageManifest{Version: 3, Mode: a.c.Mode, Files: map[string]string{}}
+	parts := map[string]any{"projects": a.state.Projects, "admin": adminData{a.state.Admin, a.state.PasswordHash}, "settings": a.state.Settings, "users": a.state.Users, "routes": a.state.Routes, "revisions": revisionData{a.state.Revision, a.state.Applied, a.state.Revisions}}
 	for i := 0; i < len(a.state.Audits); i += auditChunkSize {
 		parts[fmt.Sprintf("audits-%06d", m.AuditChunks)] = a.state.Audits[i:min(i+auditChunkSize, len(a.state.Audits))]
 		m.AuditChunks++
